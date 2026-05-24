@@ -6143,24 +6143,22 @@ document.addEventListener('click', (e) => {
         const clean = (v) => String(v || '').trim();
 
         let updatedEmployeeReport = task.employee_report;
-        if (isApprove) {
-          let progressMap = {};
-          try {
-            const raw = task.employee_report || '';
-            if (raw.startsWith('{') && raw.endsWith('}')) {
-              progressMap = JSON.parse(raw);
-            }
-          } catch(e) { progressMap = {}; }
-          const assigneeIds = String(task.assignee_user_id || '').split(',').map(s => s.trim()).filter(Boolean);
-          assigneeIds.forEach(id => {
-            progressMap[id] = 100;
-          });
-          updatedEmployeeReport = JSON.stringify(progressMap);
-        }
+        let progressMap = {};
+        try {
+          const raw = task.employee_report || '';
+          if (raw.startsWith('{') && raw.endsWith('}')) {
+            progressMap = JSON.parse(raw);
+          }
+        } catch(e) { progressMap = {}; }
+        const assigneeIds = String(task.assignee_user_id || '').split(',').map(s => s.trim()).filter(Boolean);
+        assigneeIds.forEach(id => {
+          progressMap[id] = isApprove ? 100 : 0;
+        });
+        updatedEmployeeReport = JSON.stringify(progressMap);
 
         const updateData = {
-          status: isApprove ? 'done' : 'rejected',
-          progress_percent: isApprove ? 100 : Number(task.progress_percent || 0),
+          status: isApprove ? 'done' : 'todo',
+          progress_percent: isApprove ? 100 : 0,
           employee_report: updatedEmployeeReport,
           manager_comment: clean(managerCommentInput.value),
           manager_guidance: clean(managerGuidanceInput.value),
