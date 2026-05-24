@@ -5725,6 +5725,8 @@ document.addEventListener('click', (e) => {
               show_notification_bell = true;
               if (lower(t.status || 'todo') === 'pending_approval') {
                 notification_text = `📤 Công việc được báo cáo hoàn thành: ${t.title || t.task_name || ''}`;
+              } else if (toNum(t.progress_percent) > 0 && toNum(t.progress_percent) < 100) {
+                notification_text = `📈 Tiến độ công việc được cập nhật: ${t.title || t.task_name || ''} (${t.progress_percent}%)`;
               } else {
                 notification_text = `💬 Bình luận mới từ nhân viên trong công việc: ${t.title || t.task_name || ''}`;
               }
