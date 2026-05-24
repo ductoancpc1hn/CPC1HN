@@ -1748,6 +1748,19 @@ thead tr.filter-row th{background:#fff;padding-top:6px;padding-bottom:8px}
         <div class="empty" id="commentsEmpty">Chưa có bình luận nào</div>
       </div>
       <div style="border:1px solid #e2e8f0; border-radius:12px; overflow:visible; position:relative; background:#fff;">
+        <div id="commentImagePreviewContainer" style="display:none; padding:12px; border-bottom:1px solid #f1f5f9; position:relative; background:#f8fafc; border-radius:11px 11px 0 0;">
+          <img id="commentImagePreview" src="" style="max-height:120px; max-width:180px; border-radius:6px; border:1px solid #e2e8f0; display:block;" />
+          <button type="button" id="removeCommentImageBtn" style="position:absolute; top:4px; left:170px; background:#ef4444; color:#fff; border:none; border-radius:50%; width:20px; height:20px; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:bold;">×</button>
+        </div>
+        <!-- File Preview Container -->
+        <div id="commentFilePreviewContainer" style="display:none; padding:10px 12px; border-bottom:1px solid #f1f5f9; position:relative; background:#f8fafc; align-items:center; gap:8px;">
+          <span style="font-size:18px; flex-shrink:0;">📄</span>
+          <div style="flex:1; min-width:0;">
+            <div id="commentFileName" style="font-size:12px; font-weight:600; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+            <div id="commentFileSize" style="font-size:10px; color:#94a3b8;"></div>
+          </div>
+          <button type="button" id="removeCommentFileBtn" style="background:#ef4444; color:#fff; border:none; border-radius:50%; width:20px; height:20px; font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-weight:bold;">×</button>
+        </div>
         <div id="commentInput" contenteditable="true" placeholder="Viết bình luận..." style="width:100%; border:none; padding:12px; font-size:13px; min-height:60px; outline:none; font-family:inherit; overflow-y:auto; max-height:200px; color:#334155;"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:#f8fafc; border-top:1px solid #f1f5f9; border-radius:0 0 11px 11px;">
           <div style="display:flex; gap:8px; align-items:center; position:relative;">
@@ -1790,6 +1803,14 @@ thead tr.filter-row th{background:#fff;padding-top:6px;padding-bottom:8px}
                 <button type="button" onclick="insertEmojiAtCursor('commentInput', '😢')" style="background:none; border:none; font-size:16px; cursor:pointer; padding:2px;">😢</button>
               </div>
             </div>
+
+            <!-- Image Uploader Button -->
+            <button type="button" id="commentImageBtn" title="Thêm ảnh" style="background:none; border:1px solid #e2e8f0; font-size:14px; cursor:pointer; width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#334155;">📷</button>
+            <input type="file" id="commentImageFile" accept="image/*" style="display:none;" />
+
+            <!-- File Uploader Button -->
+            <button type="button" id="commentFileBtn" title="Đính kèm tệp" style="background:none; border:1px solid #e2e8f0; font-size:14px; cursor:pointer; width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#334155; margin-left:2px;">📎</button>
+            <input type="file" id="commentFileFile" style="display:none;" />
           </div>
           <button type="button" id="submitCommentBtn" style="background:#3b82f6; color:#fff; border:none; padding:6px 16px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">Gửi</button>
         </div>
@@ -2655,9 +2676,7 @@ function renderPerformance(rows) {
           <tr style="border-bottom:1px solid #f1f5f9">
             <td style="padding:14px 16px;font-weight:600;">
               <div style="display:flex; align-items:center; gap:12px;">
-                <div class="avatar-circle user-avatar-clickable" data-user-name="${escapeHtml(u.full_name)}" style="width:36px; height:36px; font-size:12px; font-weight:700; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; background:${getAvatarColor(u.full_name)}; cursor:pointer; flex-shrink:0; transition: transform 0.2s ease;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'">
-                  ${getInitials(u.full_name)}
-                </div>
+                ${getUserAvatarHtml(u.full_name, 36, "cursor:pointer; transition: transform 0.2s ease; font-size:12px;", "avatar-circle user-avatar-clickable", true, "onmouseover=\"this.style.transform='scale(1.15)'\" onmouseout=\"this.style.transform='scale(1)'\"")}
                 <div>
                   <div style="color:var(--text); font-size:14px; font-weight:600;">${escapeHtml(u.full_name)}</div>
                   <div style="font-size:11px;color:#94a3b8;font-weight:500;">Mã: ${escapeHtml(u.user_id)} · ${escapeHtml(u.team || 'Chưa phân tổ')}</div>
@@ -2817,6 +2836,38 @@ function getAvatarColor(name) {
     '#ec4899', '#06b6d4', '#10b981', '#f43f5e', '#a855f7'
   ];
   return colors[Math.abs(hash) % colors.length];
+}
+
+function getUserAvatarHtml(name, sizePx, customStyle = '', extraClass = '', isClickable = true, extraAttrs = '') {
+  if (!name) return `<div class="${extraClass}" style="width:${sizePx}px; height:${sizePx}px; border-radius:50%; background:#cbd5e1; display:inline-flex; align-items:center; justify-content:center; ${customStyle}" title="Chưa phân công">👤</div>`;
+  
+  const allUsers = window.__dashboardUsersForCreate || [];
+  const user = allUsers.find(u => String(u.full_name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase());
+  
+  let avatarUrl = null;
+  if (user) {
+    avatarUrl = user.avatar_url;
+  }
+  
+  if (sessionFullName && String(name).trim().toLowerCase() === String(sessionFullName).trim().toLowerCase()) {
+    const localOverride = localStorage.getItem('user_avatar_' + sessionUserId);
+    if (localOverride) avatarUrl = localOverride;
+  }
+  
+  const initials = getInitials(name);
+  const color = getAvatarColor(name);
+  const clickableClass = isClickable ? 'user-avatar-clickable' : '';
+  const finalClass = `${clickableClass} ${extraClass}`.trim();
+  
+  const styleStr = `width:${sizePx}px; height:${sizePx}px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0; overflow:hidden; vertical-align:middle; ${customStyle}`;
+  const dataAttr = isClickable ? `data-user-name="${escapeHtml(name)}"` : '';
+  const titleAttr = `title="${escapeHtml(name)}"`;
+  
+  if (avatarUrl) {
+    return `<div class="${finalClass}" ${dataAttr} ${titleAttr} ${extraAttrs} style="${styleStr}"><img src="${escapeHtml(avatarUrl)}" style="width:100%; height:100%; object-fit:cover; display:block;" /></div>`;
+  } else {
+    return `<div class="${finalClass}" ${dataAttr} ${titleAttr} ${extraAttrs} style="${styleStr} background:${color}; color:#fff;">${initials}</div>`;
+  }
 }
 
 function renderChecklistBadge(progress) {
@@ -3007,22 +3058,18 @@ function renderRows(rows){
     if (cardAssignees.length === 0) {
       cardAssigneesHtml = `<div class="avatar-circle" style="width:28px; height:28px; font-size:10px; background:#cbd5e1;" title="Chưa phân công">👤</div>`;
     } else if (cardAssignees.length <= 4) {
-      cardAssigneesHtml = cardAssignees.map((name, idx) => `
-        <div class="avatar-circle user-avatar-clickable" data-user-name="${escapeHtml(name)}" style="width:28px; height:28px; font-size:10px; background:${getAvatarColor(name)}; border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1; margin-left:${idx > 0 ? '-8px' : '0'}; position:relative; z-index:${10 - idx}; cursor:pointer;" title="${escapeHtml(name)}">
-          ${getInitials(name)}
-        </div>
-      `).join('');
+      cardAssigneesHtml = cardAssignees.map((name, idx) =>
+        getUserAvatarHtml(name, 28, `border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1; margin-left:${idx > 0 ? '-8px' : '0'}; position:relative; z-index:${10 - idx}; cursor:pointer; font-size:10px;`, 'avatar-circle user-avatar-clickable', true)
+      ).join('');
     } else {
       const displayAssignees = cardAssignees.slice(0, 3);
       const remainingAssignees = cardAssignees.slice(3);
       const remainingCount = remainingAssignees.length;
       const remainingNames = remainingAssignees.join(', ');
       
-      cardAssigneesHtml = displayAssignees.map((name, idx) => `
-        <div class="avatar-circle user-avatar-clickable" data-user-name="${escapeHtml(name)}" style="width:28px; height:28px; font-size:10px; background:${getAvatarColor(name)}; border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1; margin-left:${idx > 0 ? '-8px' : '0'}; position:relative; z-index:${10 - idx}; cursor:pointer;" title="${escapeHtml(name)}">
-          ${getInitials(name)}
-        </div>
-      `).join('');
+      cardAssigneesHtml = displayAssignees.map((name, idx) =>
+        getUserAvatarHtml(name, 28, `border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1; margin-left:${idx > 0 ? '-8px' : '0'}; position:relative; z-index:${10 - idx}; cursor:pointer; font-size:10px;`, 'avatar-circle user-avatar-clickable', true)
+      ).join('');
       
       cardAssigneesHtml += `
         <div class="avatar-circle" style="width:28px; height:28px; font-size:10px; background:#cbd5e1; color:#475569; font-weight:700; border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1; margin-left:-8px; position:relative; z-index:6; display:flex; align-items:center; justify-content:center; cursor:default;" title="và ${remainingCount} người khác: ${escapeHtml(remainingNames)}">
@@ -3621,13 +3668,29 @@ function renderComments() {
     return `<div style="${containerStyle}">
       ${threadLines}
       <div style="display:flex;align-items:flex-start;gap:10px;">
-        <div style="width:${avatarSize}px;height:${avatarSize}px;border-radius:50%;background:${getAvatarColor(c.author)};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${avatarFont}px;font-weight:700;flex-shrink:0;">${getInitials(c.author)}</div>
+        ${getUserAvatarHtml(c.author, avatarSize, `font-size:${avatarFont}px; cursor:pointer;`, 'user-avatar-clickable', true)}
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
             <span style="font-size:13px;font-weight:600;color:#1e293b;">${escapeHtml(c.author)}</span>
             <span style="font-size:11px;color:#94a3b8;">${timeSince(c.time)}</span>
           </div>
           <div class="comment-text-box-${i}" style="font-size:13px;color:#334155;line-height:1.5;word-break:break-word;">${formatCommentText(c.text)}</div>
+          ${c.image ? `
+            <div style="margin-top:8px;">
+              <img src="${escapeHtml(c.image)}" class="comment-attached-image" style="max-width:100%; max-height:220px; border-radius:8px; cursor:zoom-in; border:1px solid #e2e8f0; display:block;" onclick="showFullCommentImage('${escapeHtml(c.image)}')" />
+            </div>
+          ` : ''}
+          ${c.file && c.file.data && c.file.name ? `
+            <div style="margin-top:8px;">
+              <div onclick="downloadCommentFile('${escapeHtml(c.file.data)}', '${escapeHtml(c.file.name)}')" style="display:inline-flex; align-items:center; gap:8px; padding:8px 12px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; font-size:12px; cursor:pointer; user-select:none; transition:background 0.2s;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
+                <span style="font-size:16px;">📄</span>
+                <div style="text-align:left;">
+                  <div style="font-weight:600; color:#1e293b; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(c.file.name)}</div>
+                  <div style="font-size:10px; color:#94a3b8;">${escapeHtml(c.file.size || '')} · Nhấp để tải về</div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
           <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap;">
             ${reactionHtml}
             
@@ -4048,9 +4111,134 @@ async function syncCommentsToDatabase(origin) {
   }
 }
 
+// Comment Image Selector & Compression Logic
+let selectedCommentImageBase64 = '';
+let selectedCommentFile = null;
+
+function formatBytes(bytes, decimals = 1) {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const commentImageBtn = document.getElementById('commentImageBtn');
+  const commentImageFile = document.getElementById('commentImageFile');
+  const commentImagePreview = document.getElementById('commentImagePreview');
+  const commentImagePreviewContainer = document.getElementById('commentImagePreviewContainer');
+  const removeCommentImageBtn = document.getElementById('removeCommentImageBtn');
+
+  const commentFileBtn = document.getElementById('commentFileBtn');
+  const commentFileFile = document.getElementById('commentFileFile');
+  const commentFilePreviewContainer = document.getElementById('commentFilePreviewContainer');
+  const commentFileName = document.getElementById('commentFileName');
+  const commentFileSize = document.getElementById('commentFileSize');
+  const removeCommentFileBtn = document.getElementById('removeCommentFileBtn');
+
+  if (commentImageBtn && commentImageFile) {
+    commentImageBtn.addEventListener('click', () => {
+      commentImageFile.click();
+    });
+  }
+
+  if (commentImageFile) {
+    commentImageFile.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          const maxDim = 800;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          selectedCommentImageBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          if (commentImagePreview) commentImagePreview.src = selectedCommentImageBase64;
+          if (commentImagePreviewContainer) commentImagePreviewContainer.style.display = 'block';
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (removeCommentImageBtn) {
+    removeCommentImageBtn.addEventListener('click', () => {
+      selectedCommentImageBase64 = '';
+      if (commentImageFile) commentImageFile.value = '';
+      if (commentImagePreviewContainer) commentImagePreviewContainer.style.display = 'none';
+      if (commentImagePreview) commentImagePreview.src = '';
+    });
+  }
+
+  if (commentFileBtn && commentFileFile) {
+    commentFileBtn.addEventListener('click', () => {
+      commentFileFile.click();
+    });
+  }
+
+  if (commentFileFile) {
+    commentFileFile.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // 5MB limit check
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Dung lượng tệp vượt quá giới hạn 5MB. Vui lòng chọn tệp nhỏ hơn.');
+        commentFileFile.value = '';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        selectedCommentFile = {
+          data: event.target.result,
+          name: file.name,
+          size: formatBytes(file.size)
+        };
+        if (commentFileName) commentFileName.textContent = file.name;
+        if (commentFileSize) commentFileSize.textContent = formatBytes(file.size);
+        if (commentFilePreviewContainer) {
+          commentFilePreviewContainer.style.display = 'flex';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (removeCommentFileBtn) {
+    removeCommentFileBtn.addEventListener('click', () => {
+      selectedCommentFile = null;
+      if (commentFileFile) commentFileFile.value = '';
+      if (commentFilePreviewContainer) commentFilePreviewContainer.style.display = 'none';
+      if (commentFileName) commentFileName.textContent = '';
+      if (commentFileSize) commentFileSize.textContent = '';
+    });
+  }
+});
+
 // Reusable function to submit a flat comment to Supabase
 async function postNewComment(text) {
-  if (!text) return;
+  if (!text && !selectedCommentImageBase64 && !selectedCommentFile) return;
   if (!currentTaskId) { alert('Chưa chọn công việc'); return; }
 
   try {
@@ -4060,7 +4248,9 @@ async function postNewComment(text) {
       body: JSON.stringify({
         token: sessionToken,
         task_id: currentTaskId,
-        comment: text
+        comment: text,
+        image: selectedCommentImageBase64 || undefined,
+        file: selectedCommentFile || undefined
       })
     });
 
@@ -4096,7 +4286,7 @@ document.getElementById('submitCommentBtn').addEventListener('click', async func
   
   // Safe validation check by stripping tags and spaces
   const textCheck = html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
-  if (!textCheck) { alert('Vui lòng nhập nội dung bình luận'); return; }
+  if (!textCheck && !selectedCommentImageBase64 && !selectedCommentFile) { alert('Vui lòng nhập nội dung bình luận, thêm ảnh hoặc tệp đính kèm'); return; }
 
   submitBtn.disabled = true;
   submitBtn.textContent = 'Đang gửi...';
@@ -4104,6 +4294,27 @@ document.getElementById('submitCommentBtn').addEventListener('click', async func
   await postNewComment(html);
 
   input.innerHTML = '';
+
+  // Reset image uploader state
+  selectedCommentImageBase64 = '';
+  const commentImageFile = document.getElementById('commentImageFile');
+  if (commentImageFile) commentImageFile.value = '';
+  const commentImagePreviewContainer = document.getElementById('commentImagePreviewContainer');
+  if (commentImagePreviewContainer) commentImagePreviewContainer.style.display = 'none';
+  const commentImagePreview = document.getElementById('commentImagePreview');
+  if (commentImagePreview) commentImagePreview.src = '';
+
+  // Reset file uploader state
+  selectedCommentFile = null;
+  const commentFileFile = document.getElementById('commentFileFile');
+  if (commentFileFile) commentFileFile.value = '';
+  const commentFilePreviewContainer = document.getElementById('commentFilePreviewContainer');
+  if (commentFilePreviewContainer) commentFilePreviewContainer.style.display = 'none';
+  const commentFileName = document.getElementById('commentFileName');
+  if (commentFileName) commentFileName.textContent = '';
+  const commentFileSize = document.getElementById('commentFileSize');
+  if (commentFileSize) commentFileSize.textContent = '';
+
   submitBtn.disabled = false;
   submitBtn.textContent = 'Gửi';
   updateToolbarStates(); // reset button states
@@ -4210,7 +4421,7 @@ function fillTaskDetail(data){
         const barColor = pct >= 100 ? '#16a34a' : pct >= 50 ? '#3b82f6' : pct > 0 ? '#f59e0b' : '#94a3b8';
         listHtml += `
           <div style="padding:10px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #f1f5f9; background:${idx % 2 === 0 ? '#f8fafc' : '#ffffff'};">
-            <div class="avatar-circle user-avatar-clickable" data-user-name="${escapeHtml(name)}" style="width:28px; height:28px; border-radius:50%; background:${getAvatarColor(name)}; color:white; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0; cursor:pointer;" title="${escapeHtml(name)}">${getInitials(name)}</div>
+            ${getUserAvatarHtml(name, 28, 'cursor:pointer; font-size:10px;', 'avatar-circle user-avatar-clickable', true)}
             <div style="flex:1; min-width:0;">
               <div style="font-size:12px; font-weight:600; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(name)}</div>
               <div style="margin-top:4px; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden;">
@@ -4342,9 +4553,7 @@ function fillTaskDetail(data){
   const creatorName = task.created_by_name || 'Quản lý';
   const creatorContainer = document.getElementById('detailCreatorContainer');
   if (creatorContainer) {
-    creatorContainer.innerHTML = `
-      <div class="avatar-circle user-avatar-clickable" data-user-name="${escapeHtml(creatorName)}" style="width:28px; height:28px; border-radius:50%; background:${getAvatarColor(creatorName)}; color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1;" title="Người giao việc: ${escapeHtml(creatorName)}">${getInitials(creatorName)}</div>
-    `;
+    creatorContainer.innerHTML = getUserAvatarHtml(creatorName, 28, 'cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1; font-size:10px;', 'avatar-circle user-avatar-clickable', true, `title="Người giao việc: ${escapeHtml(creatorName)}"`);
   }
 
   const assigneeContainer = document.getElementById('detailAssigneeContainer');
@@ -4352,9 +4561,7 @@ function fillTaskDetail(data){
     let assigneesHtml = '';
     const assigneeNames = String(task.assignee_name || '').split(',').map(s => s.trim()).filter(Boolean);
     assigneeNames.forEach(name => {
-      assigneesHtml += `
-        <div class="avatar-circle user-avatar-clickable" data-user-name="${escapeHtml(name)}" style="width:28px; height:28px; border-radius:50%; background:${getAvatarColor(name)}; color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1;" title="Người phụ trách: ${escapeHtml(name)}">${getInitials(name)}</div>
-      `;
+      assigneesHtml += getUserAvatarHtml(name, 28, 'cursor:pointer; border:2px solid #fff; box-shadow:0 0 0 1px #cbd5e1; font-size:10px;', 'avatar-circle user-avatar-clickable', true, `title="Người phụ trách: ${escapeHtml(name)}"`);
     });
     if (!assigneesHtml) {
       assigneesHtml = '<span style="font-size:12px; color:#94a3b8;">Chưa phân công</span>';
@@ -5306,7 +5513,7 @@ function openProfileModal() {
   if (savedAvatar && modalAvatarPreview) {
     modalAvatarPreview.innerHTML = '<img src="' + savedAvatar + '" />';
   } else if (modalAvatarPreview) {
-    modalAvatarPreview.textContent = (sessionFullName || '').split(' ').map(w => w[0]).join('').slice(-2).toUpperCase();
+    modalAvatarPreview.textContent = getInitials(sessionFullName);
   }
   if (profileModal) profileModal.classList.add('show');
   if (profileModalOverlay) profileModalOverlay.classList.add('show');
@@ -5557,7 +5764,7 @@ function showUserProfilePopover(el, name) {
 
   popover.innerHTML = `
     <div class="popover-header">
-      <div class="popover-avatar" style="background:${color}">${initials}</div>
+      ${getUserAvatarHtml(name, 44, '', 'popover-avatar', false)}
       <div>
         <h4 class="popover-name">${escapeHtml(name)}</h4>
         <div class="popover-id">Mã: ${escapeHtml(user_id)}</div>
@@ -5618,6 +5825,25 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Lightbox modal trigger helper
+function showFullCommentImage(src) {
+  const modal = document.getElementById('imageLightboxModal');
+  const img = document.getElementById('lightboxImage');
+  if (modal && img) {
+    img.src = src;
+    modal.style.display = 'flex';
+  }
+}
+
+// Download file trigger helper
+function downloadCommentFile(base64, name) {
+  const link = document.createElement('a');
+  link.href = base64;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
 
     // -------------------------------------------------------------
@@ -6435,7 +6661,7 @@ document.addEventListener('click', (e) => {
 
     // 8. Direct Overrides for Comments, Reactions & Silent Refreshes
     async function postNewComment(text) {
-      if (!text) return;
+      if (!text && !selectedCommentImageBase64 && !selectedCommentFile) return;
       if (!currentTaskId) { alert('Chưa chọn công việc'); return; }
 
       try {
@@ -6476,7 +6702,9 @@ document.addEventListener('click', (e) => {
           text: text,
           time: commentTime,
           reactions: {},
-          replies: []
+          replies: [],
+          image: selectedCommentImageBase64 || undefined,
+          file: selectedCommentFile || undefined
         });
 
         const serialized = JSON.stringify(commentsList);
@@ -6568,5 +6796,9 @@ document.addEventListener('click', (e) => {
       }
     });
 </script>
+
+<div id="imageLightboxModal" onclick="this.style.display='none';" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:9999; align-items:center; justify-content:center; cursor:zoom-out;">
+  <img id="lightboxImage" src="" style="max-width:90%; max-height:90%; border-radius:8px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25); transition:transform 0.3s ease;" />
+</div>
 </body>
 </html>
