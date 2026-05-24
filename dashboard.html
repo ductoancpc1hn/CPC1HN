@@ -4767,8 +4767,7 @@ async function saveTaskUpdate(actionType){
     if (actionButton) {
       actionButton.disabled = true;
       actionButton.textContent =
-        actionType === 'save_progress' ? 'Đang báo cáo...' :
-        actionType === 'submit_completion' ? 'Đang báo cáo hoàn thành...' :
+        (actionType === 'save_progress' || actionType === 'submit_completion') ? 'Đang báo cáo...' :
         actionType === 'manager_comment' ? 'Đang lưu nhận xét...' :
         'Đang xử lý...';
     }
@@ -5675,6 +5674,23 @@ document.addEventListener('click', (e) => {
           const hasNewEmployeeReply = toBool(t.has_new_employee_reply);
           const hasNewManagerComment = toBool(t.has_new_manager_comment);
 
+          function getLastCommentAuthor(rawComment) {
+            if (!rawComment) return '';
+            const text = String(rawComment).trim();
+            if (text.startsWith('[') && text.endsWith(']')) {
+              try {
+                const arr = JSON.parse(text);
+                if (Array.isArray(arr) && arr.length > 0) {
+                  return String(arr[arr.length - 1].author || '').trim();
+                }
+              } catch(e) {}
+            }
+            return '';
+          }
+
+          const lastManagerCommentAuthor = getLastCommentAuthor(t.manager_comment);
+          const lastEmployeeReplyAuthor = getLastCommentAuthor(t.employee_issue);
+
           const employeeReportText = lower(t.employee_report);
           const managerCommentText = lower(t.manager_comment);
 
@@ -5687,11 +5703,32 @@ document.addEventListener('click', (e) => {
           const isManagerViewer = sessionRole === 'manager' || sessionRole === 'admin' || isCreatorViewer;
 
           let show_notification_bell = false;
+          let notification_text = '';
+
+          const isNewCard = (lower(t.status || 'todo') === 'todo' && toNum(t.progress_percent) === 0);
 
           if (isAssigneeViewer) {
-            show_notification_bell = hasNewManagerComment && !isManagerOk;
+            if (hasNewManagerComment && lastManagerCommentAuthor !== sessionFullName) {
+              show_notification_bell = true;
+              if (lower(t.status || 'todo') === 'todo' && norm(t.approval_status) === 'rejected') {
+                notification_text = `❌ Yêu cầu làm lại công việc: ${t.title || t.task_name || ''}`;
+              } else if (lower(t.status || 'todo') === 'done' && norm(t.approval_status) === 'approved') {
+                notification_text = `✅ Công việc được duyệt hoàn thành: ${t.title || t.task_name || ''}`;
+              } else if (isNewCard) {
+                notification_text = `📌 Công việc mới được giao: ${t.title || t.task_name || ''}`;
+              } else {
+                notification_text = `💬 Bình luận mới từ quản lý trong công việc: ${t.title || t.task_name || ''}`;
+              }
+            }
           } else if (isManagerViewer) {
-            show_notification_bell = hasNewEmployeeReply && !isEmployeeOk;
+            if (hasNewEmployeeReply && lastEmployeeReplyAuthor !== sessionFullName) {
+              show_notification_bell = true;
+              if (lower(t.status || 'todo') === 'pending_approval') {
+                notification_text = `📤 Công việc được báo cáo hoàn thành: ${t.title || t.task_name || ''}`;
+              } else {
+                notification_text = `💬 Bình luận mới từ nhân viên trong công việc: ${t.title || t.task_name || ''}`;
+              }
+            }
           }
 
           return {
@@ -5718,7 +5755,8 @@ document.addEventListener('click', (e) => {
             updated_at: norm(t.updated_at),
             has_new_employee_reply: hasNewEmployeeReply,
             has_new_manager_comment: hasNewManagerComment,
-            show_notification_bell
+            show_notification_bell,
+            notification_text
           };
         }).filter(r => r.task_id);
 
@@ -6037,8 +6075,7 @@ document.addEventListener('click', (e) => {
       clearDetailMessages();
 
       const actionButton =
-        actionType === 'save_progress' ? saveProgressBtn :
-        actionType === 'submit_completion' ? submitCompletionBtn :
+        (actionType === 'save_progress' || actionType === 'submit_completion') ? submitCompletionBtn :
         actionType === 'manager_comment' ? saveManagerCommentBtn :
         null;
 
@@ -6047,7 +6084,10 @@ document.addEventListener('click', (e) => {
       try {
         if (actionButton) {
           actionButton.disabled = true;
-          actionButton.textContent = 'Đang xử lý...';
+          actionButton.textContent =
+            (actionType === 'save_progress' || actionType === 'submit_completion') ? 'Đang báo cáo...' :
+            actionType === 'manager_comment' ? 'Đang lưu nhận xét...' :
+            'Đang xử lý...';
         }
 
         const nowStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
@@ -6361,18 +6401,31 @@ document.addEventListener('click', (e) => {
         const task = matchedTasks[0];
         if (!task) return;
 
-        const isManagerOrAdmin = (sessionRole === 'manager' || sessionRole === 'admin');
+        const ownerId = String(task.assignee_user_id || task.user_id || '').trim();
+        const createdByUserId = String(task.created_by_user_id || '').trim();
+
+        const assigneesList = ownerId.split(',').map(s => s.trim().toLowerCase());
+        const isAssigneeViewer = assigneesList.includes(sessionUserId.toLowerCase());
+        const isCreatorViewer = createdByUserId.toLowerCase() === sessionUserId.toLowerCase();
+        const isManagerViewer = sessionRole === 'manager' || sessionRole === 'admin' || isCreatorViewer;
+
         const updateData = {};
-        const nowStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+        let needsUpdate = false;
 
-        if (isManagerOrAdmin) {
-          updateData.has_new_employee_reply = false;
-        } else {
+        if (isAssigneeViewer && (task.has_new_manager_comment || task.has_new_manager_comment === 'true')) {
           updateData.has_new_manager_comment = false;
+          needsUpdate = true;
         }
-        updateData.updated_at = nowStr;
+        if (isManagerViewer && (task.has_new_employee_reply || task.has_new_employee_reply === 'true')) {
+          updateData.has_new_employee_reply = false;
+          needsUpdate = true;
+        }
 
-        await supabaseClient.from('tasks').update(updateData).eq('task_id', taskId);
+        if (needsUpdate) {
+          const nowStr = new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+          updateData.updated_at = nowStr;
+          await supabaseClient.from('tasks').update(updateData).eq('task_id', taskId);
+        }
       } catch (err) {
         console.error('Failed to clear notification:', err);
       }
