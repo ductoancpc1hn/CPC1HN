@@ -5836,13 +5836,23 @@ function showFullCommentImage(src) {
 }
 
 // Download file trigger helper
-function downloadCommentFile(base64, name) {
-  const link = document.createElement('a');
-  link.href = base64;
-  link.download = name;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function downloadCommentFile(dataOrUrl, name) {
+  if (dataOrUrl.startsWith('http://') || dataOrUrl.startsWith('https://')) {
+    const link = document.createElement('a');
+    link.href = dataOrUrl;
+    link.target = '_blank';
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } else {
+    const link = document.createElement('a');
+    link.href = dataOrUrl;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 }
 
 
@@ -6659,6 +6669,122 @@ function downloadCommentFile(base64, name) {
       }
     }
 
+    // Helpers for Supabase Storage uploads
+    function base64ToBlob(base64DataUrl) {
+      const parts = base64DataUrl.split(',');
+      if (parts.length !== 2) {
+        throw new Error('Định dạng tệp base64 không hợp lệ');
+      }
+      const header = parts[0];
+      const base64Content = parts[1];
+      
+      const mimeMatch = header.match(/data:(.*?);base64/);
+      if (!mimeMatch) {
+        throw new Error('Định dạng tệp base64 không hợp lệ');
+      }
+      
+      const mimeType = mimeMatch[1];
+      const byteCharacters = atob(base64Content);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      return new Blob([byteArray], { type: mimeType });
+    }
+
+    async function uploadBase64ToSupabase(base64DataUrl, folderPath) {
+      if (!base64DataUrl || !base64DataUrl.startsWith('data:')) return base64DataUrl;
+      try {
+        const parts = base64DataUrl.split(',');
+        if (parts.length !== 2) {
+          return base64DataUrl;
+        }
+        
+        const header = parts[0];
+        const base64Content = parts[1];
+        
+        const mimeMatch = header.match(/data:(.*?);base64/);
+        if (!mimeMatch) {
+          return base64DataUrl;
+        }
+        
+        const mimeType = mimeMatch[1];
+        const extension = mimeType.split('/')[1] || 'bin';
+        const fileName = `${folderPath}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`;
+        const blob = base64ToBlob(base64DataUrl);
+        
+        const { data, error } = await supabaseClient.storage
+          .from('CPC1HN')
+          .upload(fileName, blob, {
+            contentType: mimeType,
+            upsert: true
+          });
+          
+        if (error) throw error;
+        
+        const { data: urlData } = supabaseClient.storage
+          .from('CPC1HN')
+          .getPublicUrl(fileName);
+          
+        return urlData.publicUrl;
+      } catch (err) {
+        console.error('[Storage Client] Upload error:', err);
+        return base64DataUrl;
+      }
+    }
+
+    async function uploadFileBase64ToSupabase(fileObj, folderPath) {
+      if (!fileObj || !fileObj.data || !fileObj.data.startsWith('data:')) return fileObj;
+      try {
+        const base64DataUrl = fileObj.data;
+        const parts = base64DataUrl.split(',');
+        if (parts.length !== 2) {
+          return fileObj;
+        }
+        
+        const header = parts[0];
+        const base64Content = parts[1];
+        
+        const mimeMatch = header.match(/data:(.*?);base64/);
+        if (!mimeMatch) {
+          return fileObj;
+        }
+        
+        const mimeType = mimeMatch[1];
+        const blob = base64ToBlob(base64DataUrl);
+        
+        const originalName = fileObj.name || 'file';
+        const nameParts = originalName.split('.');
+        const extension = nameParts.length > 1 ? nameParts.pop() : 'bin';
+        const cleanBaseName = nameParts.join('.').replace(/[^a-zA-Z0-9-_]/g, '_');
+        
+        const fileName = `${folderPath}/${Date.now()}_${cleanBaseName}.${extension}`;
+        
+        const { data, error } = await supabaseClient.storage
+          .from('CPC1HN')
+          .upload(fileName, blob, {
+            contentType: mimeType,
+            upsert: true
+          });
+          
+        if (error) throw error;
+        
+        const { data: urlData } = supabaseClient.storage
+          .from('CPC1HN')
+          .getPublicUrl(fileName);
+          
+        return {
+          data: urlData.publicUrl,
+          name: fileObj.name,
+          size: fileObj.size
+        };
+      } catch (err) {
+        console.error('[Storage Client] Upload file error:', err);
+        return fileObj;
+      }
+    }
+
     // 8. Direct Overrides for Comments, Reactions & Silent Refreshes
     async function postNewComment(text) {
       if (!text && !selectedCommentImageBase64 && !selectedCommentFile) return;
@@ -6697,14 +6823,25 @@ function downloadCommentFile(base64, name) {
         const defaultAuthor = isManagerOrAdmin ? (currentTask.created_by_name || 'Quản lý') : (currentTask.assignee_name || 'Nhân viên');
         const commentsList = getCommentsArray(existingRaw, defaultAuthor);
 
+        // Upload attachments if present and they are base64 strings
+        let finalImage = undefined;
+        if (selectedCommentImageBase64) {
+          finalImage = await uploadBase64ToSupabase(selectedCommentImageBase64, 'comments');
+        }
+
+        let finalFile = undefined;
+        if (selectedCommentFile) {
+          finalFile = await uploadFileBase64ToSupabase(selectedCommentFile, 'comments');
+        }
+
         commentsList.push({
           author: sessionFullName || 'Bạn',
           text: text,
           time: commentTime,
           reactions: {},
           replies: [],
-          image: selectedCommentImageBase64 || undefined,
-          file: selectedCommentFile || undefined
+          image: finalImage || undefined,
+          file: finalFile || undefined
         });
 
         const serialized = JSON.stringify(commentsList);
