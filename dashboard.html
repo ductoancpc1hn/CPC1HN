@@ -2701,8 +2701,66 @@ function updateLiveClock(){
   }
 }
 
+function playNotificationSound() {
+  try {
+    if (!window.__audioCtx) {
+      window.__audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const audioCtx = window.__audioCtx;
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    
+    const now = audioCtx.currentTime;
+    
+    // Play dual-tone chime (ding-dong sound)
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(659.25, now); // E5
+    gain1.gain.setValueAtTime(0.12, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.1); // A5
+    gain2.gain.setValueAtTime(0.12, now + 0.1);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    
+    osc1.start(now);
+    osc1.stop(now + 0.35);
+    osc2.start(now + 0.1);
+    osc2.stop(now + 0.55);
+  } catch (err) {
+    console.warn('Notification audio playback failed:', err);
+  }
+}
+
+// Resume AudioContext on first user interaction if blocked by autoplay policy
+document.addEventListener('click', () => {
+  if (window.__audioCtx && window.__audioCtx.state === 'suspended') {
+    window.__audioCtx.resume();
+  }
+}, { once: true });
+
 function updateNotificationDropdown(rows) {
   const notifTasks = (rows || []).filter(r => r.show_notification_bell === true || r.show_notification_bell === 'true');
+  
+  // Play sound if new notification arrives
+  const currentIds = notifTasks.map(t => t.task_id);
+  if (window.__previousNotifIds !== undefined) {
+    const hasNew = currentIds.some(id => !window.__previousNotifIds.includes(id));
+    if (hasNew) {
+      playNotificationSound();
+    }
+  }
+  window.__previousNotifIds = currentIds;
+
   const notifCountBadge = document.getElementById('notifCountBadge');
   const notifDropdownCount = document.getElementById('notifDropdownCount');
   const notifListItems = document.getElementById('notifListItems');
@@ -4568,8 +4626,8 @@ Array.from(box.querySelectorAll('.overdue-task-item')).forEach(function(el){
   });
 });
 }
-async function loadTasks(){
-  if (loadingBox) loadingBox.classList.add('show');
+async function loadTasks(isSilent = false){
+  if (!isSilent && loadingBox) loadingBox.classList.add('show');
   if (errorBox) {
     errorBox.classList.remove('show');
     errorBox.textContent = '';
@@ -5376,6 +5434,13 @@ setInterval(updateLiveClock, 1000);
 updateUserProfileUI();
 loadTasks();
 
+// Poll tasks every 20 seconds silently to check for updates and trigger sound notifications
+setInterval(() => {
+  if (typeof loadTasks === 'function') {
+    loadTasks(true);
+  }
+}, 20000);
+
 // -------------------------------------------------------------
 // Interactive Premium Handlers for Tabs, Collapsible Filters & View Modes
 // -------------------------------------------------------------
@@ -5564,8 +5629,8 @@ document.addEventListener('click', (e) => {
     function webhookBase() { return ""; }
 
     // 1. Overriding loadTasks
-    async function loadTasks() {
-      if (loadingBox) loadingBox.classList.add('show');
+    async function loadTasks(isSilent = false) {
+      if (!isSilent && loadingBox) loadingBox.classList.add('show');
       if (errorBox) {
         errorBox.classList.remove('show');
         errorBox.textContent = '';
@@ -6428,7 +6493,7 @@ document.addEventListener('click', (e) => {
     }
 
     async function loadTasksSilently() {
-      await loadTasks();
+      await loadTasks(true);
     }
 
     
