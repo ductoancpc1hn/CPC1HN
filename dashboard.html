@@ -5681,7 +5681,8 @@ document.addEventListener('click', (e) => {
           const isEmployeeOk = employeeReportText === 'ok';
           const isManagerOk = managerCommentText === 'ok';
 
-          const isAssigneeViewer = lower(ownerId) === lower(sessionUserId);
+          const assigneesList = String(ownerId).split(',').map(s => s.trim().toLowerCase());
+          const isAssigneeViewer = assigneesList.includes(lower(sessionUserId));
           const isCreatorViewer = lower(createdByUserId) === lower(sessionUserId);
           const isManagerViewer = sessionRole === 'manager' || sessionRole === 'admin' || isCreatorViewer;
 
