@@ -6916,8 +6916,16 @@ async function uploadBase64ToSupabase(base64DataUrl, folderPath) {
 
         // Refresh details in place to reload comments array from server
         try {
-          const { data: dTasks, error: tErr } = await supabaseClient.from('tasks').select('*').eq('task_id', currentTaskId);
-          const { data: dLogs, error: lErr } = await supabaseClient.from('task_updates').select('*').eq('task_id', currentTaskId);
+          const [taskRes, logRes] = await Promise.all([
+  fetch(`/api/task-detail?task_id=${encodeURIComponent(currentTaskId)}`),
+  fetch(`/api/task-logs?task_id=${encodeURIComponent(currentTaskId)}`)
+]);
+
+const dTasks = await taskRes.json();
+const dLogs = await logRes.json();
+
+const tErr = !taskRes.ok ? dTasks : null;
+const lErr = !logRes.ok ? dLogs : null;
 
           if (tErr) throw tErr;
           if (lErr) throw lErr;
