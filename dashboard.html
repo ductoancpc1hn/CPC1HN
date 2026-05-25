@@ -1388,7 +1388,7 @@ thead tr.filter-row th{background:#fff;padding-top:6px;padding-bottom:8px}
           <div style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 16px;">
             <!-- Accordion 1: Công việc quá hạn hôm nay -->
             <div class="collapsible-panel collapsed" id="perfOverduePanel">
-              <div class="collapsible-header" onclick="togglePerfSection('perfOverduePanel')">
+              <div class="collapsible-header" onclick="togglePerfSection('perfOverduePanel', true)">
                 <div class="collapsible-header-left">
                   <h3 class="collapsible-title">⏰ Công việc quá hạn hôm nay</h3>
                   <span class="collapsible-badge overdue" id="perfOverdueBadge" style="display: none;">0 công việc</span>
@@ -2408,9 +2408,14 @@ function setStats(summary){
   if (h) h.textContent = summary.high_priority || 0;
 }
 
-function togglePerfSection(panelId) {
+function togglePerfSection(panelId, isUserAction = false) {
   const panel = document.getElementById(panelId);
   if (!panel) return;
+
+  if (isUserAction && panelId === 'perfOverduePanel') {
+    window.__overduePanelUserCollapsed = !panel.classList.contains('collapsed');
+  }
+
   panel.classList.toggle('collapsed');
   const btnText = panel.querySelector('.collapsible-toggle-text');
   const btnIcon = panel.querySelector('.collapsible-toggle-icon');
@@ -2589,9 +2594,9 @@ function renderPerformance(rows) {
         overdueBadge.textContent = `${overdueTasks.length} công việc quá hạn`;
         overdueBadge.style.display = 'inline-flex';
         overdueBadge.className = 'collapsible-badge overdue';
-        // Auto-expand if there are overdue tasks
+        // Auto-expand if there are overdue tasks and the user hasn't manually collapsed it
         const overduePanel = document.getElementById('perfOverduePanel');
-        if (overduePanel && overduePanel.classList.contains('collapsed')) {
+        if (overduePanel && overduePanel.classList.contains('collapsed') && !window.__overduePanelUserCollapsed) {
           togglePerfSection('perfOverduePanel');
         }
       } else {
@@ -5603,7 +5608,17 @@ if (submitProfileBtn) {
     try {
       // Save avatar locally if updated
       if (pendingAvatarBase64) {
-        localStorage.setItem('user_avatar_' + sessionUserId, pendingAvatarBase64);
+        if (sessionToken === "static_client_session") {
+          try {
+            const avatarUrl = await uploadBase64ToSupabase(pendingAvatarBase64, 'avatar');
+            localStorage.setItem('user_avatar_' + sessionUserId, avatarUrl);
+          } catch (e) {
+            console.error('Failed to upload avatar to storage:', e);
+            localStorage.setItem('user_avatar_' + sessionUserId, pendingAvatarBase64);
+          }
+        } else {
+          localStorage.setItem('user_avatar_' + sessionUserId, pendingAvatarBase64);
+        }
       }
 
       if (sessionToken === "static_client_session") {
@@ -5889,6 +5904,66 @@ function downloadCommentFile(dataOrUrl, name) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  }
+}
+
+// Client-side base64 helpers for Supabase Storage (used in SPA mode)
+function base64ToBlob(base64DataUrl) {
+  const parts = base64DataUrl.split(',');
+  if (parts.length !== 2) {
+    throw new Error('Định dạng tệp base64 không hợp lệ');
+  }
+  const header = parts[0];
+  const base64Content = parts[1];
+  const mimeMatch = header.match(/data:(.*?);base64/);
+  if (!mimeMatch) {
+    throw new Error('Định dạng tệp base64 không hợp lệ');
+  }
+  const mimeType = mimeMatch[1];
+  const byteCharacters = atob(base64Content);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: mimeType });
+}
+
+async function uploadBase64ToSupabase(base64DataUrl, folderPath) {
+  if (typeof supabaseClient === 'undefined') return base64DataUrl;
+  if (!base64DataUrl || !base64DataUrl.startsWith('data:')) return base64DataUrl;
+  
+  try {
+    const parts = base64DataUrl.split(',');
+    if (parts.length !== 2) return base64DataUrl;
+    
+    const header = parts[0];
+    const base64Content = parts[1];
+    const mimeMatch = header.match(/data:(.*?);base64/);
+    if (!mimeMatch) return base64DataUrl;
+    
+    const mimeType = mimeMatch[1];
+    const extension = mimeType.split('/')[1] || 'bin';
+    const fileName = `${folderPath}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`;
+    const blob = base64ToBlob(base64DataUrl);
+    
+    const { data, error } = await supabaseClient.storage
+      .from('CPC1HN')
+      .upload(fileName, blob, {
+        contentType: mimeType,
+        upsert: true
+      });
+      
+    if (error) throw error;
+    
+    const { data: urlData } = supabaseClient.storage
+      .from('CPC1HN')
+      .getPublicUrl(fileName);
+      
+    return urlData.publicUrl;
+  } catch (err) {
+    console.error('[Storage Client] Upload error:', err);
+    return base64DataUrl;
   }
 }
 
@@ -6706,70 +6781,7 @@ function downloadCommentFile(dataOrUrl, name) {
       }
     }
 
-    // Helpers for Supabase Storage uploads
-    function base64ToBlob(base64DataUrl) {
-      const parts = base64DataUrl.split(',');
-      if (parts.length !== 2) {
-        throw new Error('Định dạng tệp base64 không hợp lệ');
-      }
-      const header = parts[0];
-      const base64Content = parts[1];
-      
-      const mimeMatch = header.match(/data:(.*?);base64/);
-      if (!mimeMatch) {
-        throw new Error('Định dạng tệp base64 không hợp lệ');
-      }
-      
-      const mimeType = mimeMatch[1];
-      const byteCharacters = atob(base64Content);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      return new Blob([byteArray], { type: mimeType });
-    }
-
-    async function uploadBase64ToSupabase(base64DataUrl, folderPath) {
-      if (!base64DataUrl || !base64DataUrl.startsWith('data:')) return base64DataUrl;
-      try {
-        const parts = base64DataUrl.split(',');
-        if (parts.length !== 2) {
-          return base64DataUrl;
-        }
-        
-        const header = parts[0];
-        const base64Content = parts[1];
-        
-        const mimeMatch = header.match(/data:(.*?);base64/);
-        if (!mimeMatch) {
-          return base64DataUrl;
-        }
-        
-        const mimeType = mimeMatch[1];
-        const extension = mimeType.split('/')[1] || 'bin';
-        const fileName = `${folderPath}/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${extension}`;
-        const blob = base64ToBlob(base64DataUrl);
-        
-        const { data, error } = await supabaseClient.storage
-          .from('CPC1HN')
-          .upload(fileName, blob, {
-            contentType: mimeType,
-            upsert: true
-          });
-          
-        if (error) throw error;
-        
-        const { data: urlData } = supabaseClient.storage
-          .from('CPC1HN')
-          .getPublicUrl(fileName);
-          
-        return urlData.publicUrl;
-      } catch (err) {
-        console.error('[Storage Client] Upload error:', err);
-        return base64DataUrl;
-      }
-    }
+    // 8. Direct Overrides for Comments, Reactions & Silent Refreshes
 
     async function uploadFileBase64ToSupabase(fileObj, folderPath) {
       if (!fileObj || !fileObj.data || !fileObj.data.startsWith('data:')) return fileObj;
