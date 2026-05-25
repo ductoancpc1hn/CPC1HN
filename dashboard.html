@@ -4019,6 +4019,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return uDepts.includes(dept.toLowerCase());
       }) : [];
 
+      // Save active selections before re-rendering
+      let prevSingleUser = '';
+      const singleUserSel = document.getElementById('assignSingleUserSelect');
+      if (singleUserSel) prevSingleUser = singleUserSel.value;
+
+      let prevTeam = '';
+      const teamSel = document.getElementById('assignTeamSelect');
+      if (teamSel) prevTeam = teamSel.value;
+
+      const prevCheckedUserIds = [];
+      document.querySelectorAll('.multi-assignee-cb:checked').forEach(cb => {
+        prevCheckedUserIds.push(cb.value);
+      });
+
       if (mode === 'single') {
         const sel = document.getElementById('assignSingleUserSelect');
         if (sel) {
@@ -4026,9 +4040,16 @@ document.addEventListener('DOMContentLoaded', () => {
           filtered.forEach(u => {
             sel.innerHTML += `<option value="${u.user_id}">${escapeHtml(u.full_name)} (${escapeHtml(u.team || '--')})</option>`;
           });
+          if (prevSingleUser && [...sel.options].some(o => o.value === prevSingleUser)) {
+            sel.value = prevSingleUser;
+          }
         }
       } else if (mode === 'multiple') {
         renderMultiUserChecklist(filtered, dept);
+        prevCheckedUserIds.forEach(id => {
+          const cb = document.querySelector(`.multi-assignee-cb[value="${id}"]`);
+          if (cb) cb.checked = true;
+        });
       } else if (mode === 'team') {
         const teams = [...new Set(filtered.map(u => u.team).filter(Boolean))];
         const sel = document.getElementById('assignTeamSelect');
@@ -4037,6 +4058,9 @@ document.addEventListener('DOMContentLoaded', () => {
           teams.forEach(t => {
             sel.innerHTML += `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`;
           });
+          if (prevTeam && [...sel.options].some(o => o.value === prevTeam)) {
+            sel.value = prevTeam;
+          }
         }
       }
     });
@@ -5131,8 +5155,16 @@ function renderCreateDepartments(rows){
   const assignDeptSelect = document.getElementById('assignDeptSelect');
   if (!assignDeptSelect) return;
 
+  const currentSelectedValue = assignDeptSelect.value;
   const list = Array.isArray(rows) ? rows : [];
   const departments = getUniqueDepartments(list);
+
+  // If options are already loaded and are identical, skip rebuild to prevent resetting select box state
+  const existingOptions = Array.from(assignDeptSelect.options).map(o => o.value).filter(v => v !== "");
+  const isIdentical = departments.length === existingOptions.length && departments.every(d => existingOptions.includes(d));
+  if (isIdentical && existingOptions.length > 0) {
+    return;
+  }
 
   let html = '<option value="">-- Chọn phòng ban --</option>';
   departments.forEach(function(dept){
@@ -5140,12 +5172,17 @@ function renderCreateDepartments(rows){
   });
   assignDeptSelect.innerHTML = html;
 
-  // Default to session user's first department if available
-  const myDepts = getSessionDepartments();
-  if (myDepts.length > 0) {
-    const defaultDept = myDepts[0];
-    if (departments.includes(defaultDept)) {
-      assignDeptSelect.value = defaultDept;
+  // Restore previous selection if it is still valid
+  if (currentSelectedValue && departments.includes(currentSelectedValue)) {
+    assignDeptSelect.value = currentSelectedValue;
+  } else {
+    // Default to session user's first department if available
+    const myDepts = getSessionDepartments();
+    if (myDepts.length > 0) {
+      const defaultDept = myDepts[0];
+      if (departments.includes(defaultDept)) {
+        assignDeptSelect.value = defaultDept;
+      }
     }
   }
 
