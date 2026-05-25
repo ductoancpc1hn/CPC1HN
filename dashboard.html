@@ -1983,6 +1983,12 @@ thead tr.filter-row th{background:#fff;padding-top:6px;padding-bottom:8px}
           sessionToken = "static_client_session";
           canCreateTask = ['admin', 'manager', 'staff'].includes(sessionRole);
           canApproveTask = ['admin', 'manager'].includes(sessionRole);
+
+          // Clean up broken avatar URL from localStorage
+          const cachedAvatar = localStorage.getItem('user_avatar_' + sessionUserId);
+          if (cachedAvatar && cachedAvatar.includes('1779698952977_6ll7o1.jpeg')) {
+            localStorage.removeItem('user_avatar_' + sessionUserId);
+          }
         }
       } catch (e) {
         localStorage.removeItem('greenops_session');
@@ -2041,6 +2047,14 @@ thead tr.filter-row th{background:#fff;padding-top:6px;padding-bottom:8px}
 
 
 
+
+// Clean up broken avatar URL from localStorage
+if (typeof sessionUserId !== 'undefined' && sessionUserId) {
+  const cachedAvatar = localStorage.getItem('user_avatar_' + sessionUserId);
+  if (cachedAvatar && cachedAvatar.includes('1779698952977_6ll7o1.jpeg')) {
+    localStorage.removeItem('user_avatar_' + sessionUserId);
+  }
+}
 
 const appShell = document.getElementById('appShell');
 const menuToggleBtn = document.getElementById('menuToggleBtn');
@@ -5990,16 +6004,10 @@ async function uploadBase64ToSupabase(base64DataUrl, folderPath) {
       }
 
       try {
-        const [taskRes, logRes] = await Promise.all([
-  fetch(`/api/task-detail?task_id=${encodeURIComponent(currentTaskId)}`),
-  fetch(`/api/task-logs?task_id=${encodeURIComponent(currentTaskId)}`)
-]);
-
-const dTasks = await taskRes.json();
-const dLogs = await logRes.json();
-
-const tErr = !taskRes.ok ? dTasks : null;
-const lErr = !logRes.ok ? dLogs : null;
+        const { data: dbTasks, error: tErr } = await supabaseClient.from('tasks').select('*');
+        const { data: dbUsers, error: uErr } = await supabaseClient
+          .from('users')
+          .select('user_id, full_name, team, department, role, email, phone, avatar_url');
 
         if (tErr) throw tErr;
         if (uErr) throw uErr;
@@ -6761,15 +6769,7 @@ const lErr = !logRes.ok ? dLogs : null;
     // 7. Direct Override for Notifications Clearance
     async function clearTaskNotification(taskId) {
       try {
-        const matchedTasksRes = await fetch(
-  `/api/task-detail?task_id=${encodeURIComponent(taskId)}`
-);
-
-const matchedTasks = await matchedTasksRes.json();
-
-if (!matchedTasksRes.ok) {
-  console.error("Lỗi lấy task:", matchedTasks);
-}
+        const { data: matchedTasks } = await supabaseClient.from('tasks').select('*').eq('task_id', taskId);
         const task = matchedTasks[0];
         if (!task) return;
 
@@ -6932,16 +6932,8 @@ if (!matchedTasksRes.ok) {
 
         // Refresh details in place to reload comments array from server
         try {
-          const [taskRes, logRes] = await Promise.all([
-  fetch(`/api/task-detail?task_id=${encodeURIComponent(currentTaskId)}`),
-  fetch(`/api/task-logs?task_id=${encodeURIComponent(currentTaskId)}`)
-]);
-
-const dTasks = await taskRes.json();
-const dLogs = await logRes.json();
-
-const tErr = !taskRes.ok ? dTasks : null;
-const lErr = !logRes.ok ? dLogs : null;
+          const { data: dTasks, error: tErr } = await supabaseClient.from('tasks').select('*').eq('task_id', currentTaskId);
+          const { data: dLogs, error: lErr } = await supabaseClient.from('task_updates').select('*').eq('task_id', currentTaskId);
 
           if (tErr) throw tErr;
           if (lErr) throw lErr;
