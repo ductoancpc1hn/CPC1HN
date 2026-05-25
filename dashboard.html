@@ -5990,8 +5990,16 @@ async function uploadBase64ToSupabase(base64DataUrl, folderPath) {
       }
 
       try {
-        const { data: dbTasks, error: tErr } = await supabaseClient.from('tasks').select('*');
-        const { data: dbUsers, error: uErr } = await supabaseClient.from('users').select('*');
+        const [taskRes, logRes] = await Promise.all([
+  fetch(`/api/task-detail?task_id=${encodeURIComponent(currentTaskId)}`),
+  fetch(`/api/task-logs?task_id=${encodeURIComponent(currentTaskId)}`)
+]);
+
+const dTasks = await taskRes.json();
+const dLogs = await logRes.json();
+
+const tErr = !taskRes.ok ? dTasks : null;
+const lErr = !logRes.ok ? dLogs : null;
 
         if (tErr) throw tErr;
         if (uErr) throw uErr;
@@ -6753,7 +6761,15 @@ async function uploadBase64ToSupabase(base64DataUrl, folderPath) {
     // 7. Direct Override for Notifications Clearance
     async function clearTaskNotification(taskId) {
       try {
-        const { data: matchedTasks } = await supabaseClient.from('tasks').select('*').eq('task_id', taskId);
+        const matchedTasksRes = await fetch(
+  `/api/task-detail?task_id=${encodeURIComponent(taskId)}`
+);
+
+const matchedTasks = await matchedTasksRes.json();
+
+if (!matchedTasksRes.ok) {
+  console.error("Lỗi lấy task:", matchedTasks);
+}
         const task = matchedTasks[0];
         if (!task) return;
 
