@@ -5623,13 +5623,19 @@ if (submitProfileBtn) {
 
       if (sessionToken === "static_client_session") {
         // Direct Supabase update for client-side SPA mode
+        const savedAvatar = localStorage.getItem('user_avatar_' + sessionUserId);
+        const updateData = {
+          full_name: fullName,
+          email: email,
+          phone: phone
+        };
+        if (savedAvatar) {
+          updateData.avatar_url = savedAvatar;
+        }
+
         const { error: updErr } = await supabaseClient
           .from('users')
-          .update({
-            full_name: fullName,
-            email: email,
-            phone: phone
-          })
+          .update(updateData)
           .eq('user_id', sessionUserId);
 
         if (updErr) throw updErr;
